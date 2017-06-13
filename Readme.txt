@@ -20,4 +20,7 @@ Configure the GroupPolicy Element
 Computerconfiguration -> Windows -> Scripts -> Shutdown:
 Use the tab Powershell-Scripts, select the saved script and complete the configuration.
 
+Activate the GroupPolicy Element to run lokal Powershell-Scripts:
+Computer Configuration -> Administrative Templates -> Windows Components -> Windows PowerShell and configure the Turn On Script Execution setting
+
 Create the folder for the Error-Log C:\Admin\Windows Update Logs\ (or wherever you want this logs)
