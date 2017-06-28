@@ -1,42 +1,41 @@
-###########################################################################"
+﻿###########################################################################
+# Powershell Script to download and install
+# Microsoft Windows 10 Software Updates at reboot and shutdown.
 #
-# NAME: Download_and_Install_Win_Update.ps1
+# Name: Download_and_Install_Win_Update.ps1
 #
-# AUTHOR: Jan Egil Ring
-# EMAIL: jan.egil.ring@powershell.no
+# Author: marcus s.
+# Contact: https://github.com/dagrachon
 #
-# COMMENT: Script to download and install updates from Windows Update/WSUS. Reporting and rebooting may be customized.
-#          For more details, see the following blog-post:
-#          http://blog.powershell.no/2010/06/25/manage-windows-update-installations-using-windows-powershell
+# -------------------------------------------------------------------------
 #
 # You have a royalty-free right to use, modify, reproduce, and
 # distribute this script file in any way you find useful, provided that
 # you agree that the creator, owner above has no warranty, obligations,
 # or liability for such use.
 #
-# VERSION HISTORY:
-# 1.0 25.06.2010 - Initial release
-# 1.1 06.12.2013 - Modifications by Brian Clark
-# 2.0 02.06.2017 - Modifications by Markus S.
-#			Modifications depending on the purpose to use this script at windows 10 client shutdown
+# -------------------------------------------------------------------------
 #
-#	Requires Powershell Version 2.0
+# Version History:
 #
-###########################################################################
+# 2017-06-12: initial release;
+# 2017-06-23: complete Script-rework after having multiple issues 
+#             with Windows Upgrades;
+#             switched to Windows Update PowerShell Module;
+# 2017-06-26: implemented Notification-Task
 #
-# using this script at shutdown, the shutdown commands in the script are not needed.
-# as is the mail report function not needed in my actual environment.
+# -------------------------------------------------------------------------
+#
+# Requires Powershell Version 3.0 or higher
 #
 ###########################################################################
 
+# customize reports (at least recommended for testing purposes)
 $FileReport = $true
-$FileReportPath = "C:\Admin\Windows Update Reports\"
-#$AutoShutdown = $true
-#$AutoShutdownIfPending = $true
- 
+$FileReportPath = 'C:\Admin\Windows Update Reports\'
 $Path = $FileReportPath + "$env:ComputerName" + ".txt"
 
-#Testing if a internet connection is up
+#is an internet connection up?
 if (!(Test-Connection -ComputerName google.com -Count 1 -Quiet))
     {
         if ($FileReport -eq $true) 
@@ -48,95 +47,88 @@ if (!(Test-Connection -ComputerName google.com -Count 1 -Quiet))
     }
 
 #Testing if there are any pending reboots from earlier Windows Update sessions
+
+$RegistryKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
+$RegistryEntry = "InstallWindowsUpdates"
+
 if (Test-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired")
     {
-		#Report to file if enabled
+        #Report to file if enabled
 		if ($FileReport -eq $true) 
 		{
 			(Get-Date -Format dd-MM-yyyy_HH-mm).ToString(),
 			"WindowsUpdate was run on $env:ComputerName, please run WindowsUpdate again when the client is rebooted.`r`n" | Out-File -Append -FilePath $path
 		}
+        exit        
+    } 
  
-#		#Shutdown if autoshutdown for pending updates is enabled
-#		if ($AutoShutdownIfPending) 
-#		{
-#			shutdown.exe /t 0 
-#		}
-#    exit
-	}	
-#else
-#    {
-#		#Report to file if enabled
-#		if ($FileReport -eq $true) 
-#			{
-#				(Get-Date -Format dd-MM-yyyy_HH-mm).ToString(),
-#				"WindowsUpdate - check for reboot was run on $env:ComputerName, no client reboot required.`r`n" | Out-File -Append -FilePath $path
-#			}
-#	}
+# Search for available Updates
 
-
-$criteria="IsInstalled=0 and IsHidden=0 and Type='Software'" 
-$updateSession = new-object -com "Microsoft.Update.Session"
-write-progress -Activity "Updating" -Status "Checking available updates"  
-$updates=$updateSession.CreateupdateSearcher().Search($criteria).Updates
-$downloader = $updateSession.CreateUpdateDownloader() 
-$downloader.Updates = $Updates 
-        
-if ($downloader.Updates.Count -eq "0") 
-	{
-		#Report to file if enabled
-		if ($FileReport -eq $true) 
-		{
-			(Get-Date -Format dd-MM-yyyy_HH-mm).ToString(),
-			"WindowsUpdate was run on $env:ComputerName, but no new updates were found.`r`n" | Out-File -Append -FilePath $Path
-		}
-    exit
-	}
-else 
-	{
-		#If updates are available, check to accept Eulas
-        For($i=0; $i -lt $downloader.Updates.Count; $i++)
+$Updates = @(Get-WUList -UpdateType Software)
+if ($Updates.Length -eq 0)
+    {
+    # no new updates there, nothing to do.
+        if ($FileReport -eq $true)
         {
-            $update=$downloader.Updates.Item($i)
-            $update.EulaAccepted
-            if(-not $update.EulaAccepted)
+            (Get-Date -Format dd-MM-yyyy_HH-mm).ToString(),
+		    "WindowsUpdate was run on $env:ComputerName, no new updates were found. `r`n" | Out-File -Append -FilePath $path
+        }
+        exit
+    }
+else
+    {
+    # Any major Upgrades there?
+    #
+    # If so, a ScheduledTask will be registered/activated to notify the next user logging in to install the Upgrade.
+    # You can manipulate the $principal variable to notify an specific user (e.g. your administrator) 
+    #
+    # more about creating ScheduledTasks:
+    # https://technet.microsoft.com/de-de/library/jj649811(v=wps.630).aspx
+    #
+    # more about notifying users through the action-center:
+    # https://docs.microsoft.com/en-us/uwp/api/windows.ui.notifications.toastnotificationmanager
+
+    $taskName = 'UpgradeInstallation'
+
+    $Upgrades = @(Get-WUList -RootCategories Upgrades)
+
+        if (!($Upgrades.Length -eq 0))
+        {
+            if (Get-ScheduledTask | Where-Object {$_.TaskName -like $taskName })
             {
-                write-progress -Activity 'Preparing' -Status "Accepting EULA for $update"
-                $update.AcceptEula()
+                Enable-ScheduledTask -TaskName $taskName
+                (Get-Date -Format dd-MM-yyyy_HH-mm).ToString(),
+                "Upgrade installation after reboot required! Next User logging in will be notified.`r`n" | Out-File -Append -FilePath $path
+            }
+            else
+            {
+                $time = (Get-Date).AddMinutes(2).ToLongTimeString()
+                $trigger = New-ScheduledTaskTrigger -AtLogOn
+                $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew
+                $principal = New-ScheduledTaskPrincipal -GroupId "S-1-5-32-545" -RunLevel Highest
+                $action = New-ScheduledTaskAction -Execute powershell.exe -Argument '-NoProfile -NoLogo -NonInteractive -File  C:\Admin\WindowsUpgradeNotification.ps1'
+
+                Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal
+                # the notificationscript is found here: https://gist.github.com/altrive/72594b8427b2fff16431 
+                (Get-Date -Format dd-MM-yyyy_HH-mm).ToString(),
+                "Upgrade installation after reboot required! Next User logging in will be notified.`r`n" | Out-File -Append -FilePath $path
+            }
+        }
+        else
+        {
+            if (Get-ScheduledTask | Where-Object {$_.TaskName -like $taskName })
+            {
+                Disable-ScheduledTask -TaskName $taskName
             }
         }
 
-        #If updates are available, download and install
-		write-progress -Activity 'Updating' -Status "Downloading $($downloader.Updates.count) update(s)"
-		
-		$resultcode= @{0="Not Started"; 1="In Progress"; 2="Succeeded"; 3="Succeeded With Errors"; 4="Failed" ; 5="Aborted" }
-		$Result= $downloader.Download()
- 
-		if (($Result.Hresult -eq 0) -and (($result.resultCode -eq 2) -or ($result.resultCode -eq 3)) ) 
-		{
-			$updatesToInstall = New-object -com "Microsoft.Update.UpdateColl"
-            
-			$Updates | where {$_.isdownloaded} | foreach-Object {$updatesToInstall.Add($_) | out-null}
- 
-			$installer = $updateSession.CreateUpdateInstaller()      
-			$installer.Updates = $updatesToInstall
- 
-			write-progress -Activity 'Updating' -Status "Installing $($Installer.Updates.count) update(s)"        
- 
-			$installationResult = $installer.Install()        
-			$Global:counter=0      
- 
-			$Report = $installer.updates | 
-				Select-Object -property @{Name='Datum';expression={(Get-Date -Format dd-MM-yyyy_HH-mm).ToString()}},Title,EulaAccepted,@{Name='Result';expression={$ResultCode[$installationResult.GetUpdateResult($Global:Counter).resultCode ] }},@{Name='Reboot required';expression={$installationResult.GetUpdateResult($Global:Counter++).RebootRequired }} 
-		}
-		#Report to file if enabled
-		if ($FileReport -eq $true) 
-		{
-			$Report | Out-File -Append -FilePath $path
-		}
-#        #Shutdown if AutoShutdown is enabled and one or more updates are requiring a reboot
-#        if ($AutoShutdown -and $installationResult.rebootRequired) 
-#        {
-#            shutdown.exe /t 0 
-#        }
-	}
+    #Install the updates:
+    if ($FileReport -eq $true)
+        {
+        Get-WUInstall -UpdateType Software -NotCategory Upgrades -AcceptAll -AutoReboot | Out-File -Append -FilePath $path
+        }
+    else
+        {
+        Get-WUInstall -UpdateType Software -NotCategory Upgrades -AcceptAll -AutoReboot
+        }
+    }
