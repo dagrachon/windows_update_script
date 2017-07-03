@@ -23,7 +23,7 @@ Computerconfiguration -> Windows -> Scripts -> Shutdown:
 Use the tab Powershell-Scripts, select the saved script and complete the configuration.
 
 Download and Save the Notification-Script
-https://gist.github.com/dagrachon/da3327c01402f5ffd1d7e3cd68a3e237
+https://github.com/dagrachon/WindowsUpgradeNotification
 Run the notification-script once. 
 Afterwards, go to Settings -> System -> Notifications & Actions -> Scroll down to 'Automatic WindowsUpdate' (or however you named the $notifier CreateToastNotifier("xxx")) and activate the setting 'show in action-center'
 
