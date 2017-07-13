@@ -125,7 +125,8 @@ else
     #Install the updates:
     if ($FileReport -eq $true)
         {
-        Get-WUInstall -UpdateType Software -NotCategory Upgrades -AcceptAll -AutoReboot | Out-File -Append -FilePath $path
+		(Get-Date -Format dd-MM-yyyy_HH-mm).ToString(),
+        (Get-WUInstall -UpdateType Software -NotCategory Upgrades -AcceptAll -AutoReboot) | Out-File -Append -FilePath $path
         }
     else
         {
