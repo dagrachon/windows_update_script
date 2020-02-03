@@ -28,6 +28,6 @@ Run the notification-script once.
 Afterwards, go to Settings -> System -> Notifications & Actions -> Scroll down to 'Automatic WindowsUpdate' (or however you named the $notifier CreateToastNotifier("xxx")) and activate the setting 'show in action-center'
 
 Install the WindowsUpdate PowerShell Module
-https://gallery.technet.microsoft.com/scriptcenter/2d191bcd-3308-4edd-9de2-88dff796b0bc/view/Discussions
+https://www.powershellgallery.com/packages/PSWindowsUpdate/2.1.1.2
 
 Create the folder for the Error-Log C:\Admin\Windows Update Logs\ (or wherever you want this logs)
